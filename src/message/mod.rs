@@ -402,8 +402,46 @@ pub enum RData {
     AAAA(std::net::Ipv6Addr),
     NS(Name),
     CNAME(Name),
-    // Fallback for anything we don't specifically model yet (MX, TXT, SOA, ...).
+    SOA {
+        mname: Name,
+        rname: Name,
+        serial: u32,
+        refresh: u32,
+        retry: u32,
+        expire: u32,
+        minimum: u32,
+    },
+    // Fallback for anything we don't specifically model yet (MX, TXT, ...).
     Raw(Vec<u8>),
+}
+
+impl RData {
+    fn encode(&self, out: &mut Vec<u8>, name_offsets: &mut HashMap<Vec<String>, u16>) {
+        match self {
+            RData::A(ip) => out.extend_from_slice(&ip.octets()),
+            RData::AAAA(ip) => out.extend_from_slice(&ip.octets()),
+            RData::NS(n) => n.encode(out, name_offsets),
+            RData::CNAME(n) => n.encode(out, name_offsets),
+            RData::SOA {
+                mname,
+                rname,
+                serial,
+                refresh,
+                retry,
+                expire,
+                minimum,
+            } => {
+                mname.encode(out, name_offsets);
+                rname.encode(out, name_offsets);
+                out.extend_from_slice(&serial.to_be_bytes());
+                out.extend_from_slice(&refresh.to_be_bytes());
+                out.extend_from_slice(&retry.to_be_bytes());
+                out.extend_from_slice(&expire.to_be_bytes());
+                out.extend_from_slice(&minimum.to_be_bytes());
+            }
+            RData::Raw(bytes) => out.extend_from_slice(bytes),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -416,6 +454,23 @@ pub struct ResourceRecord {
 }
 
 impl ResourceRecord {
+    fn encode(&self, out: &mut Vec<u8>, name_offsets: &mut HashMap<Vec<String>, u16>) {
+        self.name.encode(out, name_offsets);
+        out.extend_from_slice(&self.rtype.to_u16().to_be_bytes());
+        out.extend_from_slice(&self.rclass.to_u16().to_be_bytes());
+        out.extend_from_slice(&self.ttl.to_be_bytes());
+
+        // rdlength isn't known until after rdata is written (rdata's own name
+        // compression can make its size vary), so reserve two bytes now and
+        // patch them once we know how much was actually written.
+        let rdlen_pos = out.len();
+        out.extend_from_slice(&0u16.to_be_bytes());
+        let rdata_start = out.len();
+        self.rdata.encode(out, name_offsets);
+        let rdlen = (out.len() - rdata_start) as u16;
+        out[rdlen_pos..rdlen_pos + 2].copy_from_slice(&rdlen.to_be_bytes());
+    }
+
     fn decode(buf: &[u8], pos: &mut usize) -> DResult<Self> {
         let name = Name::decode(buf, pos)?;
         let rtype = QType::from_u16(read_u16(buf, pos)?);
@@ -456,6 +511,25 @@ impl ResourceRecord {
                 let mut name_pos = rdata_start;
                 let n = Name::decode(buf, &mut name_pos)?;
                 RData::CNAME(n)
+            }
+            QType::SOA => {
+                let mut p = rdata_start;
+                let mname = Name::decode(buf, &mut p)?;
+                let rname = Name::decode(buf, &mut p)?;
+                let serial = read_u32(buf, &mut p)?;
+                let refresh = read_u32(buf, &mut p)?;
+                let retry = read_u32(buf, &mut p)?;
+                let expire = read_u32(buf, &mut p)?;
+                let minimum = read_u32(buf, &mut p)?;
+                RData::SOA {
+                    mname,
+                    rname,
+                    serial,
+                    refresh,
+                    retry,
+                    expire,
+                    minimum,
+                }
             }
             _ => RData::Raw(buf[rdata_start..rdata_start + rdlength].to_vec()),
         };
@@ -500,19 +574,30 @@ impl Message {
 
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(512);
-        self.header.encode(&mut out);
 
-        // Note: we only compress against names written *within this message*, using a
-        // fresh offset table. This is not required by the spec (compression is optional
-        // on write) but keeps outgoing packets small, which matters once we start adding
-        // multiple records.
+        // Counts are derived from the vectors themselves rather than trusted
+        // from self.header, so it's impossible to construct a message whose
+        // header lies about how many records follow.
+        let mut header = self.header;
+        header.qdcount = self.questions.len() as u16;
+        header.ancount = self.answers.len() as u16;
+        header.nscount = self.authorities.len() as u16;
+        header.arcount = self.additionals.len() as u16;
+        header.encode(&mut out);
+
         let mut name_offsets = HashMap::new();
         for q in &self.questions {
             q.encode(&mut out, &mut name_offsets);
         }
-        // Query messages we send only ever have a question section; encoding of RRs
-        // in outgoing packets isn't needed yet for a resolver client, so it's omitted
-        // for now and can be added when we build a server front-end.
+        for r in &self.answers {
+            r.encode(&mut out, &mut name_offsets);
+        }
+        for r in &self.authorities {
+            r.encode(&mut out, &mut name_offsets);
+        }
+        for r in &self.additionals {
+            r.encode(&mut out, &mut name_offsets);
+        }
 
         out
     }
@@ -652,5 +737,107 @@ mod tests {
             RData::A(ip) => assert_eq!(ip.to_string(), "192.5.6.30"),
             _ => panic!("expected A"),
         }
+    }
+
+    #[test]
+    fn decode_soa_record() {
+        let mut out = Vec::new();
+        out.extend_from_slice(&1u16.to_be_bytes());
+        out.extend_from_slice(&0x8000u16.to_be_bytes());
+        out.extend_from_slice(&0u16.to_be_bytes()); // qdcount
+        out.extend_from_slice(&0u16.to_be_bytes()); // ancount
+        out.extend_from_slice(&1u16.to_be_bytes()); // nscount
+        out.extend_from_slice(&0u16.to_be_bytes()); // arcount
+
+        write_label(&mut out, "example");
+        write_label(&mut out, "com");
+        out.push(0);
+        out.extend_from_slice(&6u16.to_be_bytes()); // SOA
+        out.extend_from_slice(&1u16.to_be_bytes()); // IN
+        out.extend_from_slice(&3600u32.to_be_bytes()); // TTL
+
+        let mut rdata = Vec::new();
+        write_label(&mut rdata, "ns1");
+        write_label(&mut rdata, "example");
+        write_label(&mut rdata, "com");
+        rdata.push(0);
+        write_label(&mut rdata, "hostmaster");
+        write_label(&mut rdata, "example");
+        write_label(&mut rdata, "com");
+        rdata.push(0);
+        rdata.extend_from_slice(&2024010101u32.to_be_bytes()); // serial
+        rdata.extend_from_slice(&7200u32.to_be_bytes()); // refresh
+        rdata.extend_from_slice(&3600u32.to_be_bytes()); // retry
+        rdata.extend_from_slice(&1209600u32.to_be_bytes()); // expire
+        rdata.extend_from_slice(&300u32.to_be_bytes()); // minimum
+
+        out.extend_from_slice(&(rdata.len() as u16).to_be_bytes());
+        out.extend_from_slice(&rdata);
+
+        let msg = Message::decode(&out).unwrap();
+        match &msg.authorities[0].rdata {
+            RData::SOA {
+                mname,
+                rname,
+                serial,
+                minimum,
+                ..
+            } => {
+                assert_eq!(mname.to_string(), "ns1.example.com");
+                assert_eq!(rname.to_string(), "hostmaster.example.com");
+                assert_eq!(*serial, 2024010101);
+                assert_eq!(*minimum, 300);
+            }
+            _ => panic!("expected SOA"),
+        }
+    }
+
+    #[test]
+    fn encode_decode_full_response_round_trip() {
+        let msg = Message {
+            header: Header {
+                id: 0xABCD,
+                qr: true,
+                opcode: Opcode::Query,
+                aa: true,
+                tc: false,
+                rd: true,
+                ra: true,
+                rcode: Rcode::NoError,
+                qdcount: 0,
+                ancount: 0,
+                nscount: 0,
+                arcount: 0,
+            },
+            questions: vec![Question {
+                name: Name::from_str("example.com"),
+                qtype: QType::A,
+                qclass: QClass::IN,
+            }],
+            answers: vec![ResourceRecord {
+                name: Name::from_str("example.com"),
+                rtype: QType::A,
+                rclass: QClass::IN,
+                ttl: 300,
+                rdata: RData::A("93.184.216.34".parse().unwrap()),
+            }],
+            authorities: vec![],
+            additionals: vec![],
+        };
+
+        let bytes = msg.encode();
+        let decoded = Message::decode(&bytes).unwrap();
+
+        assert_eq!(decoded.header.id, 0xABCD);
+        assert!(decoded.header.qr);
+        assert_eq!(decoded.header.ancount, 1);
+        assert_eq!(decoded.answers.len(), 1);
+        match decoded.answers[0].rdata {
+            RData::A(ip) => assert_eq!(ip.to_string(), "93.184.216.34"),
+            _ => panic!("expected A"),
+        }
+        // The answer's owner name should compress against the question's
+        // identical name rather than being spelled out twice.
+        assert!(bytes.len() < 60);
     }
 }

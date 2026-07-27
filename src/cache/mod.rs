@@ -4,11 +4,6 @@ use std::net::SocketAddr;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
-/// RFC 2308 says negative-cache TTL should come from the SOA MINIMUM field in
-/// the authority section. We don't parse SOA rdata yet (see message.rs RData::Raw
-/// fallback), so this is a fixed fallback instead. Known limitation, not an oversight.
-const DEFAULT_NEGATIVE_TTL: Duration = Duration::from_secs(300);
-
 pub enum CacheHit {
     Positive(Vec<ResourceRecord>),
     Negative(Rcode),
@@ -88,10 +83,10 @@ impl Cache {
             .insert(Self::key(name, qtype), entry);
     }
 
-    pub fn put_negative(&self, name: &str, qtype: QType, rcode: Rcode) {
+    pub fn put_negative(&self, name: &str, qtype: QType, rcode: Rcode, ttl_secs: u32) {
         let entry = NegativeEntry {
             rcode,
-            expires_at: Instant::now() + DEFAULT_NEGATIVE_TTL,
+            expires_at: Instant::now() + Duration::from_secs(ttl_secs as u64),
         };
         self.negative
             .write()
@@ -185,7 +180,7 @@ mod tests {
     #[test]
     fn negative_hit_records_rcode() {
         let cache = Cache::new();
-        cache.put_negative("nope.invalid", QType::A, Rcode::NxDomain);
+        cache.put_negative("nope.invalid", QType::A, Rcode::NxDomain, 300);
         match cache.get_answer("nope.invalid", QType::A) {
             Some(CacheHit::Negative(Rcode::NxDomain)) => {}
             _ => panic!("expected a negative cache hit"),
@@ -201,13 +196,17 @@ mod tests {
         cache.put_zone("com", com_servers.clone(), 3600);
         cache.put_zone("example.com", example_servers.clone(), 3600);
 
-        let result = cache.best_zone_servers(&Name::from_str("www.example.com")).unwrap();
+        let result = cache
+            .best_zone_servers(&Name::from_str("www.example.com"))
+            .unwrap();
         assert_eq!(result, example_servers);
 
         let result2 = cache.best_zone_servers(&Name::from_str("other.org"));
         assert!(result2.is_none());
 
-        let result3 = cache.best_zone_servers(&Name::from_str("another.com")).unwrap();
+        let result3 = cache
+            .best_zone_servers(&Name::from_str("another.com"))
+            .unwrap();
         assert_eq!(result3, com_servers);
     }
 }

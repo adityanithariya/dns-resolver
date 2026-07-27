@@ -1,4 +1,5 @@
-use crate::message::{Message, Name, QType, RData, ResourceRecord};
+use crate::cache::{Cache, CacheHit};
+use crate::message::{Message, Name, QType, RData, Rcode, ResourceRecord};
 use crate::net::{QueryError, Transport};
 use crate::root_hints::root_server_addrs;
 use std::net::SocketAddr;
@@ -24,10 +25,27 @@ fn names_equal_ci(a: &Name, b: &Name) -> bool {
     a.to_string().eq_ignore_ascii_case(&b.to_string())
 }
 
+/// RFC 2308 5.2: the negative-cache TTL is the minimum of the SOA record's own
+/// TTL and its MINIMUM field. Falls back to a conservative default if the
+/// response didn't include an SOA (which shouldn't happen for a compliant
+/// authoritative server, but defensive coding costs nothing here).
+const FALLBACK_NEGATIVE_TTL: u32 = 300;
+
+fn negative_ttl(resp: &Message) -> u32 {
+    resp.authorities
+        .iter()
+        .find_map(|r| match &r.rdata {
+            RData::SOA { minimum, .. } => Some(r.ttl.min(*minimum)),
+            _ => None,
+        })
+        .unwrap_or(FALLBACK_NEGATIVE_TTL)
+}
+
 /// Public entry point: resolve `qname`/`qtype` from the root down, following
 /// CNAMEs as needed. Returns the final matching records for `qtype`.
 pub fn resolve<T: Transport>(
     transport: &T,
+    cache: &Cache,
     qname: &str,
     qtype: QType,
 ) -> Result<Vec<ResourceRecord>, ResolveError> {
@@ -36,7 +54,7 @@ pub fn resolve<T: Transport>(
     let mut cname_chases = 0u32;
 
     loop {
-        match resolve_iterative(transport, &current_name, qtype, &mut hops)? {
+        match resolve_iterative(transport, cache, &current_name, qtype, &mut hops)? {
             IterResult::Answer(records) => return Ok(records),
             IterResult::Cname(next_name) => {
                 cname_chases += 1;
@@ -44,7 +62,6 @@ pub fn resolve<T: Transport>(
                     return Err(ResolveError::TooManyHops);
                 }
                 current_name = next_name;
-                println!("cname: {}", current_name);
             }
         }
     }
@@ -56,11 +73,22 @@ pub fn resolve<T: Transport>(
 /// pathological zone can't make us loop forever.
 fn resolve_iterative<T: Transport>(
     transport: &T,
+    cache: &Cache,
     name: &str,
     qtype: QType,
     hops: &mut u32,
 ) -> Result<IterResult, ResolveError> {
-    let mut servers: Vec<SocketAddr> = root_server_addrs();
+    if let Some(hit) = cache.get_answer(name, qtype) {
+        return match hit {
+            CacheHit::Positive(records) => Ok(IterResult::Answer(records)),
+            CacheHit::Negative(Rcode::NxDomain) => Err(ResolveError::NxDomain),
+            CacheHit::Negative(_) => Err(ResolveError::NoData),
+        };
+    }
+
+    let mut servers: Vec<SocketAddr> = cache
+        .best_zone_servers(&Name::from_str(name))
+        .unwrap_or_else(root_server_addrs);
 
     loop {
         *hops += 1;
@@ -71,8 +99,11 @@ fn resolve_iterative<T: Transport>(
         let resp = query_first_available(transport, &servers, name, qtype)?;
 
         match resp.header.rcode {
-            crate::message::Rcode::NxDomain => return Err(ResolveError::NxDomain),
-            crate::message::Rcode::NoError => {}
+            Rcode::NxDomain => {
+                cache.put_negative(name, qtype, Rcode::NxDomain, negative_ttl(&resp));
+                return Err(ResolveError::NxDomain);
+            }
+            Rcode::NoError => {}
             _ => return Err(ResolveError::ServFail),
         }
 
@@ -84,6 +115,7 @@ fn resolve_iterative<T: Transport>(
                 .cloned()
                 .collect();
             if !matched.is_empty() {
+                cache.put_answer(name, qtype, &matched);
                 return Ok(IterResult::Answer(matched));
             }
             if let Some(cname_rr) = resp.answers.iter().find(|r| r.rtype == QType::CNAME) {
@@ -91,6 +123,7 @@ fn resolve_iterative<T: Transport>(
                     return Ok(IterResult::Cname(target.to_string()));
                 }
             }
+            cache.put_negative(name, qtype, Rcode::NoError, negative_ttl(&resp)); // NoData: name exists, but not this type
             return Err(ResolveError::NoData);
         }
 
@@ -108,8 +141,6 @@ fn resolve_iterative<T: Transport>(
             })
             .collect();
 
-        println!("ns: {:?}", ns_names.iter().map(|ns| ns.to_string()).collect::<Vec<_>>());
-
         if ns_names.is_empty() {
             return Err(ResolveError::ServFail);
         }
@@ -126,7 +157,7 @@ fn resolve_iterative<T: Transport>(
                     return Err(ResolveError::TooManyHops);
                 }
                 if let Ok(IterResult::Answer(records)) =
-                    resolve_iterative(transport, &ns_name.to_string(), QType::A, hops)
+                    resolve_iterative(transport, cache, &ns_name.to_string(), QType::A, hops)
                 {
                     for r in records {
                         if let RData::A(ip) = r.rdata {
@@ -143,6 +174,13 @@ fn resolve_iterative<T: Transport>(
         if next_servers.is_empty() {
             return Err(ResolveError::ServFail);
         }
+
+        let zone_ttl = resp.authorities.iter().map(|r| r.ttl).min().unwrap_or(3600);
+        cache.put_zone(
+            &resp.authorities[0].name.to_string(),
+            next_servers.clone(),
+            zone_ttl,
+        );
 
         servers = next_servers;
     }
@@ -162,6 +200,7 @@ fn glued_addrs(ns_names: &[Name], additionals: &[ResourceRecord]) -> Vec<SocketA
     out
 }
 
+/// Try each candidate server in turn until one gives a usable response.
 fn query_first_available<T: Transport>(
     transport: &T,
     servers: &[SocketAddr],
@@ -332,7 +371,8 @@ mod tests {
             final_answer("example.com", "93.184.216.34".parse().unwrap()),
         );
 
-        let result = resolve(&transport, "example.com", QType::A).unwrap();
+        let cache = Cache::new();
+        let result = resolve(&transport, &cache, "example.com", QType::A).unwrap();
         assert_eq!(result.len(), 1);
         match result[0].rdata {
             RData::A(ip) => assert_eq!(ip, "93.184.216.34".parse::<Ipv4Addr>().unwrap()),
@@ -352,7 +392,96 @@ mod tests {
             transport.program(root, "nope.invalid", QType::A, nx.clone());
         }
 
-        let result = resolve(&transport, "nope.invalid", QType::A);
+        let cache = Cache::new();
+        let result = resolve(&transport, &cache, "nope.invalid", QType::A);
         assert!(matches!(result, Err(ResolveError::NxDomain)));
+    }
+
+    #[test]
+    fn second_lookup_is_served_from_cache_without_network() {
+        let transport = MockTransport::new();
+        let cache = Cache::new();
+
+        for root in root_server_addrs() {
+            transport.program(
+                root,
+                "example.com",
+                QType::A,
+                final_answer("example.com", "93.184.216.34".parse().unwrap()),
+            );
+        }
+
+        // First call goes over the (mock) network and populates the cache.
+        resolve(&transport, &cache, "example.com", QType::A).unwrap();
+
+        // Wipe the script entirely: if the second call still succeeds, it can
+        // only have been answered from cache, not the (now-empty) transport.
+        transport.script.borrow_mut().clear();
+
+        let result = resolve(&transport, &cache, "example.com", QType::A).unwrap();
+        match result[0].rdata {
+            RData::A(ip) => assert_eq!(ip, "93.184.216.34".parse::<Ipv4Addr>().unwrap()),
+            _ => panic!("expected A record"),
+        }
+    }
+
+    #[test]
+    fn negative_cache_ttl_comes_from_soa_minimum() {
+        use crate::message::RData as MsgRData;
+        use std::thread::sleep;
+        use std::time::Duration;
+
+        let transport = MockTransport::new();
+        let cache = Cache::new();
+
+        // NXDOMAIN response carrying an SOA with a short MINIMUM (1s), so we can
+        // observe the cached negative entry actually expire on that schedule
+        // rather than the 300s fallback.
+        let mut nx = final_answer("gone.invalid", "0.0.0.0".parse().unwrap());
+        nx.header.rcode = Rcode::NxDomain;
+        nx.answers.clear();
+        nx.header.ancount = 0;
+        nx.authorities.push(ResourceRecord {
+            name: Name::from_str("invalid"),
+            rtype: QType::SOA,
+            rclass: QClass::IN,
+            ttl: 3600,
+            rdata: MsgRData::SOA {
+                mname: Name::from_str("ns.invalid"),
+                rname: Name::from_str("hostmaster.invalid"),
+                serial: 1,
+                refresh: 7200,
+                retry: 3600,
+                expire: 1209600,
+                minimum: 1, // <-- the short one we're testing
+            },
+        });
+        nx.header.nscount = 1;
+
+        for root in root_server_addrs() {
+            transport.program(root, "gone.invalid", QType::A, nx.clone());
+        }
+
+        // First call: goes over the network, gets NXDOMAIN, caches negatively
+        // with ttl = min(3600, 1) = 1s per RFC 2308.
+        assert!(matches!(
+            resolve(&transport, &cache, "gone.invalid", QType::A),
+            Err(ResolveError::NxDomain)
+        ));
+
+        // Wipe the script: a second lookup within the TTL must still see
+        // NXDOMAIN, and can only be getting that from the negative cache now.
+        transport.script.borrow_mut().clear();
+        assert!(matches!(
+            resolve(&transport, &cache, "gone.invalid", QType::A),
+            Err(ResolveError::NxDomain)
+        ));
+
+        // After the 1s MINIMUM elapses, the negative entry should be gone,
+        // and with no script left to answer it, resolution now fails for a
+        // different reason (no usable servers) instead of returning stale NXDOMAIN.
+        sleep(Duration::from_millis(1100));
+        let after_expiry = resolve(&transport, &cache, "gone.invalid", QType::A);
+        assert!(!matches!(after_expiry, Err(ResolveError::NxDomain)));
     }
 }
