@@ -1,5 +1,29 @@
 # DNS Resolver
 
+Classic DNS Resolver listening on UDP 53 built entirely in Rust
+
+## Resolver Flow
+
+```
+Stub Resolver
+↓ UDP 53
+UDP socket listens
+↓
+JobQueue
+↓
+WorkerPool (Crossbeam)
+↓
+DNS Packet Parser
+↓
+In-Flight Cache (RwLock)
+↓
+DNS Cache (RwLock)
+↓
+Recursive Resolution
+↓
+Send UDP Response
+```
+
 ## DNS Query Structure
 
 DNS Query consists of following message structure which is same for request and response:
