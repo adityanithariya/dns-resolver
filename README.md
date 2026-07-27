@@ -1,6 +1,13 @@
-# DNS Resolver
+# Recursive DNS Resolver
 
-Classic DNS Resolver based on RFC 1035 built entirely in Rust
+Recursive DNS Resolver based on RFC 1035 built entirely in Rust
+
+Supports:
+- CLI based DNS
+- UDP
+- TCP
+- DNS over TLS (DoT)
+- DNS over HTTPS (DoH)
 
 ## Resolver Flow
 
