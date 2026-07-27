@@ -3,7 +3,7 @@ pub mod record_types;
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::message::{QType::OPT, record_types::{Name, SOARecord, TxtRecord, OptRecord}};
+use crate::message::record_types::{Name, OptRecord, SOARecord, TxtRecord};
 
 // ---------- Errors ----------
 
@@ -196,13 +196,7 @@ pub enum QType {
 }
 
 impl QType {
-    pub const ANY_TYPES: [QType; 5] = [
-        QType::A,
-        QType::AAAA,
-        QType::CNAME,
-        QType::SOA,
-        QType::TXT
-    ]; 
+    pub const ANY_TYPES: [QType; 5] = [QType::A, QType::AAAA, QType::CNAME, QType::SOA, QType::TXT];
     pub fn to_u16(self) -> u16 {
         match self {
             QType::A => 1,
@@ -396,6 +390,13 @@ impl ResourceRecord {
                 let mut p = rdata_start;
                 let txt = TxtRecord::decode(buf, &mut p, rdlength)?;
                 RData::TXT(txt)
+            }
+            QType::OPT => {
+                let mut p = rdata_start;
+                let class_raw = read_u16(buf, pos)?;
+                let ttl_raw = read_u32(buf, pos)?;
+                let opt = OptRecord::decode(class_raw, ttl_raw, buf, &mut p, rdlength)?;
+                RData::OPT(opt)
             }
             _ => RData::Raw(buf[rdata_start..rdata_start + rdlength].to_vec()),
         };

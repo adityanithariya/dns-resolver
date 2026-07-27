@@ -3,7 +3,7 @@ use rustls::{ServerConnection, StreamOwned};
 use crate::cache::Cache;
 use crate::message::{self, Header, Message, Opcode, RData, Rcode};
 use crate::net::UdpTransport;
-use crate::singleflight::{self, SharedResolveError, SingleFlight};
+use crate::singleflight::{SharedResolveError, SingleFlight};
 use crate::tls;
 use crate::workerpool::{SubmitError, WorkerPool};
 use std::io::{Read, Write};
@@ -123,7 +123,8 @@ fn resolve_message(
     transport: &UdpTransport,
     cache: &Cache,
     singleflight: &SingleFlight,
-) -> singleflight::SharedResult {
+    is_udp: bool,
+) -> Result<Vec<u8>, SharedResolveError> {
     let Some(question) = request.questions.first() else {
         return Err(SharedResolveError::NoData);
     };
@@ -132,7 +133,62 @@ fn resolve_message(
     let qtype = question.qtype;
 
     let outcome = singleflight.resolve(transport, cache, &name, qtype);
-    outcome
+    let mut response = get_default_res(&request);
+
+    match outcome {
+        Ok(records) => response.answers = records,
+        Err(SharedResolveError::NxDomain) => response.header.rcode = Rcode::NxDomain,
+        Err(SharedResolveError::NoData) => {} // NOERROR with an empty answer section
+        Err(_) => response.header.rcode = Rcode::ServFail,
+    }
+
+    let bytes = response.encode();
+
+    if !is_udp {
+        return Ok(bytes);
+    }
+
+    let opt = request
+        .additionals
+        .iter()
+        .find(|rr| rr.rtype == message::QType::OPT);
+
+    let udp_limit: usize = match opt {
+        Some(opt) => match opt.rdata.clone() {
+            RData::OPT(opt) => opt.udp_payload_size as usize,
+            _ => 512,
+        },
+        None => 512,
+    };
+
+    loop {
+        let bytes = response.encode();
+
+        if bytes.len() <= udp_limit {
+            return Ok(bytes);
+        }
+
+        response.header.tc = true;
+
+        if !response.additionals.is_empty() {
+            response.additionals.pop();
+            continue;
+        }
+
+        if !response.authorities.is_empty() {
+            response.authorities.pop();
+            continue;
+        }
+
+        if !response.answers.is_empty() {
+            response.answers.pop();
+            continue;
+        }
+
+        break;
+    }
+
+    Ok(bytes)
 }
 
 fn get_default_res(request: &Message) -> Message {
@@ -171,56 +227,12 @@ fn handle_query(
         Err(_) => return, // malformed request; nothing sensible to reply with
     };
 
-    let outcome = resolve_message(&request, transport, cache, singleflight);
-
-    let mut response = get_default_res(&request);
-
-    let opt = request
-        .additionals
-        .iter()
-        .find(|rr| rr.rtype == message::QType::OPT);
-
+    let outcome = resolve_message(&request, transport, cache, singleflight, true);
     match outcome {
-        Ok(records) => response.answers = records,
-        Err(SharedResolveError::NxDomain) => response.header.rcode = Rcode::NxDomain,
-        Err(SharedResolveError::NoData) => {} // NOERROR with an empty answer section
-        Err(_) => response.header.rcode = Rcode::ServFail,
-    }
-
-    let udp_limit: usize = match opt {
-        Some(opt) => match opt.rdata.clone() {
-            RData::OPT(opt) => opt.udp_payload_size as usize,
-            _ => 512,
-        },
-        None => 512,
-    };
-
-    loop {
-        let bytes = response.encode();
-
-        if bytes.len() <= udp_limit {
+        Ok(bytes) => {
             let _ = socket.send_to(&bytes, src);
-            break;
         }
-
-        response.header.tc = true;
-
-        if !response.additionals.is_empty() {
-            response.additionals.pop();
-            continue;
-        }
-
-        if !response.authorities.is_empty() {
-            response.authorities.pop();
-            continue;
-        }
-
-        if !response.answers.is_empty() {
-            response.answers.pop();
-            continue;
-        }
-
-        break;
+        Err(_) => {}
     }
 }
 
@@ -248,23 +260,17 @@ fn handle_tcp<S>(
 
     let request = Message::decode(&packet).unwrap();
 
-    let mut response = get_default_res(&request);
-
-    let outcome = resolve_message(&request, transport, cache, singleflight);
+    let outcome = resolve_message(&request, transport, cache, singleflight, false);
 
     match outcome {
-        Ok(records) => response.answers = records,
-        Err(SharedResolveError::NxDomain) => response.header.rcode = Rcode::NxDomain,
-        Err(SharedResolveError::NoData) => {} // NOERROR with an empty answer section
-        Err(_) => response.header.rcode = Rcode::ServFail,
+        Ok(bytes) => {
+            let len = bytes.len() as u16;
+
+            stream.write_all(&len.to_be_bytes()).ok();
+            stream.write_all(&bytes).ok();
+        }
+        Err(_) => {}
     }
-
-    let bytes = response.encode();
-
-    let len = bytes.len() as u16;
-
-    stream.write_all(&len.to_be_bytes()).ok();
-    stream.write_all(&bytes).ok();
 }
 
 fn send_servfail(socket: &UdpSocket, src: SocketAddr, data: &[u8]) {

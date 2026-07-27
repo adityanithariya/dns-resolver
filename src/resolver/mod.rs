@@ -68,10 +68,6 @@ pub fn resolve<T: Transport>(
     }
 }
 
-/// One full iterative walk (root -> ... -> authoritative) for a single name,
-/// without following CNAMEs itself (the caller does that). `hops` is shared
-/// across the whole resolution, including nested glue lookups, so a
-/// pathological zone can't make us loop forever.
 fn resolve_iterative<T: Transport>(
     transport: &T,
     cache: &Cache,
@@ -80,16 +76,16 @@ fn resolve_iterative<T: Transport>(
     hops: &mut u32,
 ) -> Result<IterResult, ResolveError> {
     if QType::ANY == qtype {
-        let mut rrSet: Vec<ResourceRecord> = vec![];
+        let mut rr_set: Vec<ResourceRecord> = vec![];
         for t in QType::ANY_TYPES {
             if let Ok(res) = resolve_iterative(transport, cache, name, t, hops) {
                 match res {
-                    Answer(mut rr) => rrSet.append(&mut rr),
+                    Answer(mut rr) => rr_set.append(&mut rr),
                     _ => {}
                 }
             }
         }
-        return Ok(Answer(rrSet));
+        return Ok(Answer(rr_set));
     }
 
     if let Some(hit) = cache.get_answer(name, qtype) {

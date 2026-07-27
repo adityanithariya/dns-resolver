@@ -268,9 +268,4 @@ impl OptRecord {
             options,
         })
     }
-
-    /// Packs the extended RCODE, version and flags into the OPT TTL field.
-    pub fn ttl(&self) -> u32 {
-        ((self.extended_rcode as u32) << 24) | ((self.version as u32) << 16) | (self.flags as u32)
-    }
 }

@@ -1,5 +1,4 @@
 use crate::message::Message;
-use std::any::Any;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::time::Duration;
