@@ -1,6 +1,7 @@
 use crate::cache::{Cache, CacheHit};
-use crate::message::{Message, Name, QType, RData, Rcode, ResourceRecord};
+use crate::message::{Message, QType, RData, Rcode, ResourceRecord, record_types::Name};
 use crate::net::{QueryError, Transport};
+use crate::resolver::IterResult::Answer;
 use crate::root_hints::root_server_addrs;
 use std::net::SocketAddr;
 
@@ -35,7 +36,7 @@ fn negative_ttl(resp: &Message) -> u32 {
     resp.authorities
         .iter()
         .find_map(|r| match &r.rdata {
-            RData::SOA { minimum, .. } => Some(r.ttl.min(*minimum)),
+            RData::SOA(soa) => Some(r.ttl.min(soa.minimum)),
             _ => None,
         })
         .unwrap_or(FALLBACK_NEGATIVE_TTL)
@@ -78,6 +79,19 @@ fn resolve_iterative<T: Transport>(
     qtype: QType,
     hops: &mut u32,
 ) -> Result<IterResult, ResolveError> {
+    if QType::ANY == qtype {
+        let mut rrSet: Vec<ResourceRecord> = vec![];
+        for t in QType::ANY_TYPES {
+            if let Ok(res) = resolve_iterative(transport, cache, name, t, hops) {
+                match res {
+                    Answer(mut rr) => rrSet.append(&mut rr),
+                    _ => {}
+                }
+            }
+        }
+        return Ok(Answer(rrSet));
+    }
+
     if let Some(hit) = cache.get_answer(name, qtype) {
         return match hit {
             CacheHit::Positive(records) => Ok(IterResult::Answer(records)),
@@ -225,7 +239,7 @@ fn query_first_available<T: Transport>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::{Header, Opcode, QClass, Question, Rcode};
+    use crate::message::{Header, Opcode, QClass, Question, Rcode, record_types::SOARecord};
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::net::Ipv4Addr;
@@ -446,7 +460,7 @@ mod tests {
             rtype: QType::SOA,
             rclass: QClass::IN,
             ttl: 3600,
-            rdata: MsgRData::SOA {
+            rdata: MsgRData::SOA(SOARecord {
                 mname: Name::from_str("ns.invalid"),
                 rname: Name::from_str("hostmaster.invalid"),
                 serial: 1,
@@ -454,7 +468,7 @@ mod tests {
                 retry: 3600,
                 expire: 1209600,
                 minimum: 1, // <-- the short one we're testing
-            },
+            }),
         });
         nx.header.nscount = 1;
 

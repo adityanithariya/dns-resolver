@@ -1,6 +1,6 @@
 # DNS Resolver
 
-Classic DNS Resolver listening on UDP 53 built entirely in Rust
+Classic DNS Resolver based on RFC 1035 built entirely in Rust
 
 ## Resolver Flow
 

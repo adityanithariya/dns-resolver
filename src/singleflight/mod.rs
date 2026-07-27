@@ -33,7 +33,7 @@ impl From<ResolveError> for SharedResolveError {
     }
 }
 
-type SharedResult = Result<Vec<ResourceRecord>, SharedResolveError>;
+pub type SharedResult = Result<Vec<ResourceRecord>, SharedResolveError>;
 
 /// One in-flight resolution that other callers can wait on.
 struct Waiter {
@@ -113,7 +113,7 @@ impl SingleFlight {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::{Header, Message, Name, Opcode, QClass, RData, Rcode};
+    use crate::message::{Header, Message, record_types::Name, Opcode, QClass, RData, Rcode};
     use crate::net::QueryError;
     use std::net::{Ipv4Addr, SocketAddr};
     use std::sync::Barrier;

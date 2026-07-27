@@ -1,5 +1,7 @@
 use crate::message::Message;
-use std::net::{SocketAddr, UdpSocket};
+use std::any::Any;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -39,7 +41,12 @@ impl Default for UdpTransport {
 
 impl Transport for UdpTransport {
     fn query(&self, server: SocketAddr, msg: &Message) -> Result<Message, QueryError> {
-        query_udp(server, msg, self.timeout, self.attempts)
+        let message = query_udp(server, msg, self.timeout, self.attempts)?;
+        if message.header.tc {
+            query_tcp(server, msg, self.timeout)
+        } else {
+            Ok(message)
+        }
     }
 }
 
@@ -92,6 +99,43 @@ pub fn query_udp(
     }
 
     Err(last_err)
+}
+
+pub fn query_tcp(
+    server: SocketAddr,
+    msg: &Message,
+    timeout: Duration,
+) -> Result<Message, QueryError> {
+    let mut stream = TcpStream::connect_timeout(&server, timeout)?;
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout))?;
+
+    let request = msg.encode();
+
+    // DNS-over-TCP starts with a 2-byte length prefix.
+    let len = (request.len() as u16).to_be_bytes();
+
+    stream.write_all(&len)?;
+    stream.write_all(&request)?;
+
+    // Read response length.
+    let mut len_buf = [0u8; 2];
+    stream.read_exact(&mut len_buf)?;
+
+    let response_len = u16::from_be_bytes(len_buf) as usize;
+
+    let mut response = vec![0u8; response_len];
+    stream.read_exact(&mut response)?;
+
+    match Message::decode(&response) {
+        Ok(response) => {
+            if response.header.id != msg.header.id {
+                return Err(QueryError::IdMismatch);
+            }
+            Ok(response)
+        }
+        Err(e) => Err(QueryError::Decode(e)),
+    }
 }
 
 #[cfg(test)]

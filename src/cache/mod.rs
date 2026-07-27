@@ -1,4 +1,4 @@
-use crate::message::{Name, QType, Rcode, ResourceRecord};
+use crate::message::{QType, Rcode, ResourceRecord, record_types::Name};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::RwLock;
