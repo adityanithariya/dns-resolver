@@ -6,8 +6,8 @@ Classic DNS Resolver based on RFC 1035 built entirely in Rust
 
 ```
 Stub Resolver
-↓ UDP 53
-UDP socket listens
+↓ UDP 53 | TCP 53 | TLS 853
+Socket listens
 ↓
 JobQueue
 ↓
@@ -21,7 +21,7 @@ DNS Cache (RwLock)
 ↓
 Recursive Resolution
 ↓
-Send UDP Response
+Send Response
 ```
 
 ## DNS Query Structure

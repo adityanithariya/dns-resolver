@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 crossbeam-channel = "0.5.16"
 rand = "0.10.2"
+rustls = "0.23.42"
+rustls-pemfile = "2.2.0"

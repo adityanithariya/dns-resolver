@@ -1,10 +1,12 @@
+use rustls::{ServerConnection, StreamOwned};
+
 use crate::cache::Cache;
 use crate::message::{self, Header, Message, Opcode, RData, Rcode};
 use crate::net::UdpTransport;
 use crate::singleflight::{self, SharedResolveError, SingleFlight};
+use crate::tls;
 use crate::workerpool::{SubmitError, WorkerPool};
 use std::io::{Read, Write};
-use std::net::TcpStream;
 
 use std::net::{SocketAddr, TcpListener, UdpSocket};
 use std::sync::Arc;
@@ -17,11 +19,13 @@ pub struct ServerContext {
     pub pool: Arc<WorkerPool>,
 }
 
-pub fn run(bind_addr: &str) -> std::io::Result<()> {
-    let udp = UdpSocket::bind(bind_addr)?;
-    let tcp = TcpListener::bind(bind_addr)?;
+pub fn run(host: &str, port: &str) -> std::io::Result<()> {
+    let addr = format!("{}:{}", host, port);
+    let udp = UdpSocket::bind(addr.clone())?;
+    let tcp = TcpListener::bind(addr)?;
+    let dot = TcpListener::bind(format!("{}:{}", host, "8100"))?;
 
-    println!("dns_resolver server listening on {}", bind_addr);
+    println!("dns_resolver server listening on {}", host);
 
     let mut buf = [0u8; 4096];
     let workers = std::thread::available_parallelism()?.get() * 4;
@@ -35,23 +39,11 @@ pub fn run(bind_addr: &str) -> std::io::Result<()> {
 
     {
         let ctx = Arc::clone(&ctx);
-        thread::spawn(move || {
-            for stream in tcp.incoming() {
-                let stream = match stream {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-
-                let pool = Arc::clone(&ctx.pool);
-                let transport = Arc::clone(&ctx.transport);
-                let cache = Arc::clone(&ctx.cache);
-                let singleflight = Arc::clone(&ctx.singleflight);
-
-                let _ = pool.try_submit(Box::new(move || {
-                    handle_tcp(stream, &transport, &cache, &singleflight);
-                }));
-            }
-        });
+        thread::spawn(move || run_tcp_listener(tcp, &ctx));
+    }
+    {
+        let ctx = Arc::clone(&ctx);
+        thread::spawn(move || run_tls_listener(dot, &ctx));
     }
 
     loop {
@@ -77,6 +69,50 @@ pub fn run(bind_addr: &str) -> std::io::Result<()> {
             Ok(_) => {}
             Err(SubmitError::QueueFull) | Err(SubmitError::PoolShutDown) => {
                 send_servfail(&udp, src, &data)
+            }
+        }
+    }
+}
+
+fn run_tcp_listener(tcp: TcpListener, ctx: &ServerContext) {
+    for stream in tcp.incoming() {
+        let stream = match stream {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let pool = Arc::clone(&ctx.pool);
+        let transport = Arc::clone(&ctx.transport);
+        let cache = Arc::clone(&ctx.cache);
+        let singleflight = Arc::clone(&ctx.singleflight);
+
+        let _ = pool.try_submit(Box::new(move || {
+            handle_tcp(stream, &transport, &cache, &singleflight);
+        }));
+    }
+}
+
+fn run_tls_listener(tcp: TcpListener, ctx: &ServerContext) {
+    for stream in tcp.incoming() {
+        let stream = match stream {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let pool = Arc::clone(&ctx.pool);
+        let transport = Arc::clone(&ctx.transport);
+        let cache = Arc::clone(&ctx.cache);
+        let singleflight = Arc::clone(&ctx.singleflight);
+
+        if let Ok(config) = tls::get_tls_config() {
+            let config = Arc::new(config);
+            {
+                if let Ok(conn) = ServerConnection::new(Arc::clone(&config)) {
+                    let tls_stream = StreamOwned::new(conn, stream);
+                    let _ = pool.try_submit(Box::new(move || {
+                        handle_tcp(tls_stream, &transport, &cache, &singleflight);
+                    }));
+                }
             }
         }
     }
@@ -188,12 +224,14 @@ fn handle_query(
     }
 }
 
-fn handle_tcp(
-    mut stream: TcpStream,
+fn handle_tcp<S>(
+    mut stream: S,
     transport: &UdpTransport,
     cache: &Cache,
     singleflight: &SingleFlight,
-) {
+) where
+    S: Read + Write,
+{
     let mut len_buf = [0; 2];
 
     if stream.read_exact(&mut len_buf).is_err() {
