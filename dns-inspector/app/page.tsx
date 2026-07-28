@@ -7,6 +7,10 @@ import MessageInspector from "@/components/MessageInspector";
 import { encodeQuery, decodeMessage } from "@/lib/wasm";
 import { postDnsQuery, health } from "@/lib/api";
 import type { Message } from "@/lib/types";
+import Footer from "@/components/Footer";
+
+const DOH_SERVER_URL =
+  process.env.NEXT_PUBLIC_CLIENT_URL ?? "https://doh.adityanithariya.com";
 
 export default function Home() {
   const [status, setStatus] = useState<QueryStatus>("idle");
@@ -58,6 +62,9 @@ export default function Home() {
           Encodes a query with the Rust resolver core compiled to WASM, sends it over DNS-over-HTTPS, and
           decodes the raw wire-format response back into its full <code>Message</code> struct.
         </p>
+        <p className="mt-2 text-xs text-muted-foreground/60">
+          Resolver: <span className="text-primary">{DOH_SERVER_URL.replace(/^https?:\/\//, "")}</span>
+        </p>
       </header>
 
       <QueryForm onSubmit={runQuery} status={status} errorMessage={error} />
@@ -74,6 +81,8 @@ export default function Home() {
           </p>
         )}
       </div>
+
+      <Footer />
     </main>
   );
 }
