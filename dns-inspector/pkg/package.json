@@ -1,0 +1,23 @@
+{
+  "name": "dns-wasm",
+  "type": "module",
+  "description": "WebAssembly bindings for encoding, decoding, and formatting DNS messages.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adityanithariya/dns-resolver.git"
+  },
+  "files": [
+    "dns_wasm_bg.wasm",
+    "dns_wasm.js",
+    "dns_wasm_bg.js",
+    "dns_wasm.d.ts"
+  ],
+  "main": "dns_wasm.js",
+  "types": "dns_wasm.d.ts",
+  "sideEffects": [
+    "./dns_wasm.js",
+    "./snippets/*"
+  ]
+}
