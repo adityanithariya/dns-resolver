@@ -23,7 +23,7 @@ query:
 	cargo run -p dns-server --bin dns_resolver -- $(DOMAIN)
 
 wasm:
-	cd dns-wasm && wasm-pack build --target bundler --out-dir ../dns-client/pkg
+	cd dns-wasm && wasm-pack build --target bundler --out-dir ../dns-inspector/pkg
 
 ## Display help menu
 help:

@@ -6,19 +6,29 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use http::header;
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use http::{HeaderValue, Method, header};
 use serde::Deserialize;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
+use tower_http::cors::CorsLayer;
 
 use crate::server::{ServerContext, resolve_message};
+use std::env;
 
 pub fn router(ctx: Arc<ServerContext>) -> Router {
     Router::new()
+        .route("/health", get(health))
         .route("/dns-query", post(doh_post))
         .route("/dns-query", get(doh_get))
         .with_state(ctx)
+}
+
+async fn health() -> impl IntoResponse {
+    Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from("OK"))
+        .unwrap()
 }
 
 async fn doh_post(State(ctx): State<Arc<ServerContext>>, body: Bytes) -> impl IntoResponse {
@@ -83,7 +93,22 @@ async fn doh_get(
 }
 
 pub async fn run(ctx: Arc<ServerContext>) -> std::io::Result<()> {
-    let app = router(ctx);
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+
+    dotenvy::from_filename(format!("{}/.env", manifest_dir)).ok();
+
+    let client_url = env::var("CLIENT_URL").expect("CLIENT_URL must be set");
+
+    let cors = CorsLayer::new()
+        .allow_origin(
+            client_url
+                .parse::<HeaderValue>()
+                .expect("Invalid CLIENT_URL"),
+        )
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT]);
+
+    let app = router(ctx).layer(cors);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8443));
 

@@ -28,3 +28,5 @@ rustls-pemfile = "2.2.0"
 serde = { version = "1.0.229", features = ["derive"] }
 tokio = { version = "1.53.1", features = ["full"] }
 ureq = "3.3.0"
+tower-http = { version = "0.7.0", features = ["cors"] }
+dotenvy = "0.15.7"
