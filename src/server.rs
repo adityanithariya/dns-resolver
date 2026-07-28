@@ -19,6 +19,17 @@ pub struct ServerContext {
     pub pool: Arc<WorkerPool>,
 }
 
+impl ServerContext {
+    pub fn new(workers: usize) -> ServerContext {
+        ServerContext {
+            cache: Arc::new(Cache::new()),
+            singleflight: Arc::new(SingleFlight::new()),
+            transport: Arc::new(UdpTransport::default()),
+            pool: Arc::new(WorkerPool::new(workers, 1024)),
+        }
+    }
+}
+
 pub fn run(host: &str, port: &str) -> std::io::Result<()> {
     let addr = format!("{}:{}", host, port);
     let udp = UdpSocket::bind(addr.clone())?;
@@ -28,14 +39,9 @@ pub fn run(host: &str, port: &str) -> std::io::Result<()> {
     println!("dns_resolver server listening on {}", host);
 
     let mut buf = [0u8; 4096];
-    let workers = std::thread::available_parallelism()?.get() * 4;
 
-    let ctx = Arc::new(ServerContext {
-        cache: Arc::new(Cache::new()),
-        singleflight: Arc::new(SingleFlight::new()),
-        transport: Arc::new(UdpTransport::default()),
-        pool: Arc::new(WorkerPool::new(workers, 1024)),
-    });
+    let workers = std::thread::available_parallelism()?.get() * 4;
+    let ctx = Arc::new(ServerContext::new(workers));
 
     {
         let ctx = Arc::clone(&ctx);
