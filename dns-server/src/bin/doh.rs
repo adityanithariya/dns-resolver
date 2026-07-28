@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dns_resolver::{doh, server::ServerContext};
+use dns_server::{doh, server::ServerContext};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {

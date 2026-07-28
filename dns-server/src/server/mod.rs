@@ -1,9 +1,9 @@
 use rustls::{ServerConnection, StreamOwned};
 
-use crate::cache::Cache;
-use crate::message::{self, Header, Message, Opcode, RData, Rcode};
-use crate::net::UdpTransport;
-use crate::singleflight::{SharedResolveError, SingleFlight};
+use dns_core::cache::Cache;
+use dns_core::message::{self, Header, Message, Opcode, RData, Rcode};
+use dns_core::net::UdpTransport;
+use dns_core::singleflight::{SharedResolveError, SingleFlight};
 use crate::tls;
 use crate::workerpool::{SubmitError, WorkerPool};
 use std::io::{Read, Write};

@@ -4,7 +4,3 @@ pub mod resolver;
 pub mod root_hints;
 pub mod cache;
 pub mod singleflight;
-pub mod server;
-pub mod workerpool;
-pub mod tls;
-pub mod doh;

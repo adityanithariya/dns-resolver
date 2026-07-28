@@ -1,19 +1,9 @@
-mod cache;
-mod message;
-mod net;
-mod resolver;
-mod root_hints;
-mod server;
-mod singleflight;
-mod tls;
-mod workerpool;
 use std::io::Read;
 
-use cache::Cache;
-use message::{Message, QType};
-use net::UdpTransport;
-
-use crate::message::formatter;
+use dns_core::cache::Cache;
+use dns_core::message::{Message, QType, formatter};
+use dns_core::net::UdpTransport;
+use dns_core::resolver;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -22,7 +12,7 @@ fn main() {
         let host = args.get(2).map(String::as_str).unwrap_or("127.0.0.1");
         let port = args.get(3).map(String::as_str).unwrap_or("5300");
 
-        if let Err(e) = server::run(host, port) {
+        if let Err(e) = dns_server::server::run(host, port) {
             eprintln!("server error: {e}");
         }
         return;

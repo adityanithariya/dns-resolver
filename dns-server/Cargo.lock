@@ -103,9 +103,9 @@ checksum = "b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9"
 
 [[package]]
 name = "bitflags"
-version = "2.13.1"
+version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
 name = "bytes"
@@ -185,32 +185,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
-name = "dns-core"
-version = "0.1.0"
-dependencies = [
- "rand",
-]
-
-[[package]]
-name = "dns-server"
+name = "dns_resolver"
 version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.23.0",
  "bytes",
  "crossbeam-channel",
- "dns-core",
  "http",
+ "rand",
  "rustls",
  "rustls-pemfile",
  "serde",
  "tokio",
  "ureq",
 ]
-
-[[package]]
-name = "dns-wasm"
-version = "0.1.0"
 
 [[package]]
 name = "dunce"
