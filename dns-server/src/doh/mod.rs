@@ -9,7 +9,7 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use http::{HeaderValue, Method, header};
 use serde::Deserialize;
-use std::{net::SocketAddr, sync::Arc};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
@@ -93,9 +93,10 @@ async fn doh_get(
 }
 
 pub async fn run(ctx: Arc<ServerContext>) -> std::io::Result<()> {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-
-    dotenvy::from_filename(format!("{}/.env", manifest_dir)).ok();
+    if cfg!(debug_assertions) {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        dotenvy::from_filename(format!("{}/.env", manifest_dir)).ok();
+    }
 
     let client_url = env::var("CLIENT_URL").expect("CLIENT_URL must be set");
 
@@ -110,9 +111,11 @@ pub async fn run(ctx: Arc<ServerContext>) -> std::io::Result<()> {
 
     let app = router(ctx).layer(cors);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8443));
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8443".to_string());
 
-    let listener = TcpListener::bind(addr).await?;
+    let addr = format!("0.0.0.0:{}", port);
+
+    let listener = TcpListener::bind(&addr).await?;
 
     println!("DoH listening on http://{}", addr);
 
