@@ -6,7 +6,6 @@ import type { Message } from "./types";
 // this project — see README.md for exactly how to produce it. It's a plain
 // ES module plus a .wasm file, so it only ever loads in the browser.
 type DnsWasmModule = {
-  default: (input?: unknown) => Promise<unknown>;
   version: () => string;
   encode_query: (id: number, name: string, qtype: number) => Uint8Array;
   decode_message: (bytes: Uint8Array) => Message;
@@ -18,9 +17,6 @@ let modulePromise: Promise<DnsWasmModule> | null = null;
 export function getDnsWasm(): Promise<DnsWasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
-      const dnswasm = await import("dns-wasm");
-      console.log(dnswasm);
-      // Adjust this path if you vendor the wasm-pack output somewhere else.
       const wasm = (await import(
         /* webpackIgnore: false */ "dns-wasm"
       )) as unknown as DnsWasmModule;
