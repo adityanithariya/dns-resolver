@@ -63,7 +63,7 @@ export default function Home() {
       <header className="mb-8">
         <div className="mb-2 flex items-baseline gap-2.5">
           <span className="text-[13px] text-primary">▲</span>
-          <h1 className="text-2xl">DNS Packet Inspector</h1>
+          <h1 className="text-2xl">Recursive DNS Resolver</h1>
         </div>
         <p className="max-w-xl text-sm text-muted-foreground">
           Encodes a query with the Rust resolver core compiled to WASM, sends it over DNS-over-HTTPS, and
