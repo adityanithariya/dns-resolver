@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::time::Duration;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum QueryError {
     Io(std::io::Error),

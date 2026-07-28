@@ -5,6 +5,7 @@ use crate::resolver::IterResult::Answer;
 use crate::root_hints::root_server_addrs;
 use std::net::SocketAddr;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ResolveError {
     NxDomain,

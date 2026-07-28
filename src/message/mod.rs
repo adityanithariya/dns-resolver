@@ -1,4 +1,5 @@
 pub mod record_types;
+pub mod formatter;
 
 use std::collections::HashMap;
 use std::fmt;

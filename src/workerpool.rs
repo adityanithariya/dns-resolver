@@ -56,8 +56,6 @@ pub struct WorkerPool {
 
 impl WorkerPool {
     pub fn new(num_workers: usize, queue_capacity: usize) -> Self {
-        assert!(num_workers > 0, "a worker pool needs at least one worker");
-
         let (sender, receiver) = crossbeam_channel::bounded::<Job>(queue_capacity);
 
         let workers = (0..num_workers)

@@ -28,6 +28,15 @@ impl ServerContext {
             pool: Arc::new(WorkerPool::new(workers, 1024)),
         }
     }
+    #[allow(dead_code)]
+    pub fn new_without_pool() -> ServerContext {
+        ServerContext {
+            cache: Arc::new(Cache::new()),
+            singleflight: Arc::new(SingleFlight::new()),
+            transport: Arc::new(UdpTransport::default()),
+            pool: Arc::new(WorkerPool::new(0, 0)),
+        }
+    }
 }
 
 pub fn run(host: &str, port: &str) -> std::io::Result<()> {
@@ -124,13 +133,18 @@ fn run_tls_listener(tcp: TcpListener, ctx: &ServerContext) {
     }
 }
 
-fn resolve_message(
-    request: &Message,
+pub fn resolve_message(
+    data: &[u8],
     transport: &UdpTransport,
     cache: &Cache,
     singleflight: &SingleFlight,
     is_udp: bool,
 ) -> Result<Vec<u8>, SharedResolveError> {
+    let request = match Message::decode(data) {
+        Ok(m) => m,
+        Err(_) => return Err(SharedResolveError::ServFail),
+    };
+
     let Some(question) = request.questions.first() else {
         return Err(SharedResolveError::NoData);
     };
@@ -228,12 +242,7 @@ fn handle_query(
     cache: &Cache,
     singleflight: &SingleFlight,
 ) {
-    let request = match Message::decode(data) {
-        Ok(m) => m,
-        Err(_) => return, // malformed request; nothing sensible to reply with
-    };
-
-    let outcome = resolve_message(&request, transport, cache, singleflight, true);
+    let outcome = resolve_message(&data, transport, cache, singleflight, true);
     match outcome {
         Ok(bytes) => {
             let _ = socket.send_to(&bytes, src);
@@ -264,9 +273,7 @@ fn handle_tcp<S>(
         return;
     }
 
-    let request = Message::decode(&packet).unwrap();
-
-    let outcome = resolve_message(&request, transport, cache, singleflight, false);
+    let outcome = resolve_message(&packet, transport, cache, singleflight, false);
 
     match outcome {
         Ok(bytes) => {
