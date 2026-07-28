@@ -13,12 +13,18 @@ const DOH_SERVER_URL =
   process.env.NEXT_PUBLIC_CLIENT_URL ?? "https://doh.adityanithariya.com";
 
 export default function Home() {
+  const [name, setName] = useState("");
   const [status, setStatus] = useState<QueryStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [queriedName, setQueriedName] = useState<string | null>(null);
 
   async function runQuery(name: string, qtype: number) {
+    if (name.startsWith("http://") || name.startsWith("https://")) {
+      const url = new URL(name);
+      setName(url.hostname);
+    }
+
     setError(null);
     setMessage(null);
     setQueriedName(name);
@@ -67,7 +73,7 @@ export default function Home() {
         </p>
       </header>
 
-      <QueryForm onSubmit={runQuery} status={status} errorMessage={error} />
+      <QueryForm name={name} setName={setName} onSubmit={runQuery} status={status} errorMessage={error} />
 
       <div className="mt-9">
         {message ? (

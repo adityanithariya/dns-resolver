@@ -17,6 +17,8 @@ import { Card, CardContent } from "@/components/ui/card";
 export type QueryStatus = "idle" | "encoding" | "sending" | "decoding" | "error";
 
 interface Props {
+  name: string;
+  setName: (name: string) => void;
   onSubmit: (name: string, qtype: number) => void;
   status: QueryStatus;
   errorMessage: string | null;
@@ -30,8 +32,7 @@ const STATUS_LABEL: Record<QueryStatus, string> = {
   error: "failed",
 };
 
-export default function QueryForm({ onSubmit, status, errorMessage }: Props) {
-  const [name, setName] = useState("");
+export default function QueryForm({ name, setName, onSubmit, status, errorMessage }: Props) {
   const [qtype, setQtype] = useState<number>(1);
 
   const busy = status === "encoding" || status === "sending" || status === "decoding";
