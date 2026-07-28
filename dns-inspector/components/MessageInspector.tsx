@@ -1,6 +1,6 @@
 "use client";
 
-import type { Message, Question, ResourceRecord, RData, QType, QClass } from "@/lib/types";
+import type { Message, Question, ResourceRecord, RData, QType, QClass, Rcode, Opcode } from "@/lib/types";
 import { nameToString, variantTag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -63,7 +63,7 @@ function RDataView({ rdata }: { rdata: RData }) {
   return <span className="text-muted-foreground">unknown</span>;
 }
 
-function typeLabel(t: QType | QClass): string {
+function typeLabel(t: QType | QClass | Rcode | Opcode): string {
   return variantTag(t as { Other: number } | string);
 }
 

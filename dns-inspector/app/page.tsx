@@ -40,7 +40,11 @@ export default function Home() {
   }
 
   useEffect(() => {
-    health()
+    try {
+      health();
+    } catch (error) {
+      console.error("Failed to check health:", error);
+    }
   }, []);
 
   return (

@@ -4,7 +4,7 @@ DOMAIN ?= example.com
 TYPE  ?= A
 DOH_URL ?= http://127.0.0.1:8443/dns-query
 
-.PHONY: doh query-doh serve query help
+.PHONY: doh query-doh serve query wasm dev help
 
 ## Run the DoH server
 doh:
@@ -25,6 +25,9 @@ query:
 wasm:
 	cd dns-wasm && wasm-pack build --target bundler --out-dir ../dns-inspector/pkg
 
+dev:
+	cd dns-inspector && bun run dev
+
 ## Display help menu
 help:
 	@echo "Available commands:"
@@ -32,3 +35,5 @@ help:
 	@echo "  make serve                     - Run DNS resolver in server mode"
 	@echo "  make query [DOMAIN=...]        - Query standard DNS (default: example.com)"
 	@echo "  make query-doh [DOMAIN=...]    - Query via DoH (default: example.com A)"
+	@echo "  make wasm                      - Build the WebAssembly package for the inspector"
+	@echo "  make dev                       - Run the DNS inspector web application"
