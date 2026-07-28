@@ -19,7 +19,9 @@ export type QueryStatus = "idle" | "encoding" | "sending" | "decoding" | "error"
 interface Props {
   name: string;
   setName: (name: string) => void;
-  onSubmit: (name: string, qtype: number) => void;
+  qtype: number;
+  setQtype: (qtype: number) => void;
+  onSubmit: () => void;
   status: QueryStatus;
   errorMessage: string | null;
 }
@@ -32,8 +34,7 @@ const STATUS_LABEL: Record<QueryStatus, string> = {
   error: "failed",
 };
 
-export default function QueryForm({ name, setName, onSubmit, status, errorMessage }: Props) {
-  const [qtype, setQtype] = useState<number>(1);
+export default function QueryForm({ qtype, setQtype, name, setName, onSubmit, status, errorMessage }: Props) {
 
   const busy = status === "encoding" || status === "sending" || status === "decoding";
 
@@ -44,7 +45,7 @@ export default function QueryForm({ name, setName, onSubmit, status, errorMessag
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim() || busy) return;
-            onSubmit(name.trim(), qtype);
+            onSubmit();
           }}
           className="flex flex-wrap items-end gap-3"
         >

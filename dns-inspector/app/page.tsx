@@ -14,12 +14,13 @@ const DOH_SERVER_URL =
 
 export default function Home() {
   const [name, setName] = useState("");
+  const [qtype, setQtype] = useState<number>(1);
   const [status, setStatus] = useState<QueryStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [queriedName, setQueriedName] = useState<string | null>(null);
 
-  async function runQuery(name: string, qtype: number) {
+  async function runQuery() {
     if (name.startsWith("http://") || name.startsWith("https://")) {
       const url = new URL(name);
       setName(url.hostname);
@@ -73,7 +74,15 @@ export default function Home() {
         </p>
       </header>
 
-      <QueryForm name={name} setName={setName} onSubmit={runQuery} status={status} errorMessage={error} />
+      <QueryForm
+        qtype={qtype}
+        setQtype={setQtype}
+        name={name}
+        setName={setName}
+        onSubmit={runQuery}
+        status={status}
+        errorMessage={error}
+      />
 
       <div className="mt-9">
         {message ? (
