@@ -3,5 +3,12 @@ name = "dns-core"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["resolver", "message"]
+
+resolver = ["dep:rand"]
+message = []
+
 [dependencies]
-rand = "0.10.2"
+rand = { version = "0.10.2", optional = true }
+serde = { version = "1.0.229", features = ["derive"] }

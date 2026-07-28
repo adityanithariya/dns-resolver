@@ -5,3 +5,8 @@ members = [
     "dns-wasm",
 ]
 resolver = "2"
+
+[workspace.package]
+repository = "https://github.com/adityanithariya/dns-resolver.git"
+license = "MIT"
+edition = "2024"

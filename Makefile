@@ -22,6 +22,9 @@ query-doh:
 query:
 	cargo run -p dns-server --bin dns_resolver -- $(DOMAIN)
 
+wasm:
+	cd dns-wasm && wasm-pack build --target bundler --out-dir ../dns-client/pkg
+
 ## Display help menu
 help:
 	@echo "Available commands:"

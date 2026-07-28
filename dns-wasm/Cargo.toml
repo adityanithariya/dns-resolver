@@ -2,5 +2,21 @@
 name = "dns-wasm"
 version = "0.1.0"
 edition = "2024"
+description = "WebAssembly bindings for encoding, decoding, and formatting DNS messages."
+repository = "https://github.com/adityanithariya/dns-resolver.git"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
+dns-core = {
+    path = "../dns-core",
+    default-features = false,
+    features = ["message"],
+}
+
+js-sys = "0.3.103"
+serde = { version = "1.0.229", features = ["derive"] }
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.83"

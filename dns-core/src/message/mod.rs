@@ -4,6 +4,8 @@ pub mod formatter;
 use std::collections::HashMap;
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::message::record_types::{Name, OptRecord, SOARecord, TxtRecord};
 
 // ---------- Errors ----------
@@ -27,7 +29,7 @@ type DResult<T> = Result<T, DecodeError>;
 
 // ---------- Header ----------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Opcode {
     Query,
     IQuery,
@@ -54,7 +56,7 @@ impl Opcode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Rcode {
     NoError,
     FormErr,
@@ -90,7 +92,7 @@ impl Rcode {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Header {
     pub id: u16,
     pub qr: bool, // false = query, true = response
@@ -181,7 +183,7 @@ impl Header {
 
 // ---------- QType / QClass ----------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum QType {
     A,
     NS,
@@ -229,7 +231,7 @@ impl QType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QClass {
     IN,
     Other(u16),
@@ -258,7 +260,7 @@ fn write_label(out: &mut Vec<u8>, label: &str) {
 
 // ---------- Question ----------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Question {
     pub name: Name,
     pub qtype: QType,
@@ -286,7 +288,7 @@ impl Question {
 
 // ---------- Resource record ----------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RData {
     A(std::net::Ipv4Addr),
     AAAA(std::net::Ipv6Addr),
@@ -314,7 +316,7 @@ impl RData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceRecord {
     pub name: Name,
     pub rtype: QType,
@@ -416,7 +418,7 @@ impl ResourceRecord {
 
 // ---------- Full message ----------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub header: Header,
     pub questions: Vec<Question>,

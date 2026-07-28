@@ -90,3 +90,69 @@ fn format_rdata(rdata: &RData) -> String {
         RData::Raw(bytes) => format!("{:02x?}", bytes),
     }
 }
+
+pub fn format_message(msg: &Message) -> String {
+    let mut output = String::new();
+
+    output.push_str(";; HEADER\n");
+    output.push_str(&format!("  ID:      {}\n", msg.header.id));
+    output.push_str(&format!("  QR:      {}\n", msg.header.qr));
+    output.push_str(&format!("  OPCODE:  {:?}\n", msg.header.opcode));
+    output.push_str(&format!("  AA:      {}\n", msg.header.aa));
+    output.push_str(&format!("  TC:      {}\n", msg.header.tc));
+    output.push_str(&format!("  RD:      {}\n", msg.header.rd));
+    output.push_str(&format!("  RA:      {}\n", msg.header.ra));
+    output.push_str(&format!("  RCODE:   {:?}\n", msg.header.rcode));
+
+    output.push_str("\n;; COUNTS\n");
+    output.push_str(&format!("  Questions:   {}\n", msg.questions.len()));
+    output.push_str(&format!("  Answers:     {}\n", msg.answers.len()));
+    output.push_str(&format!("  Authority:   {}\n", msg.authorities.len()));
+    output.push_str(&format!("  Additional:  {}\n", msg.additionals.len()));
+
+    if !msg.questions.is_empty() {
+        output.push_str("\n;; QUESTION SECTION\n");
+        for q in &msg.questions {
+            output.push_str(&format!(
+                ";{}\t{:?}\t{:?}\n",
+                q.name.to_string(),
+                q.qclass,
+                q.qtype
+            ));
+        }
+    }
+
+    if !msg.answers.is_empty() {
+        output.push_str("\n;; ANSWER SECTION\n");
+        for rr in &msg.answers {
+            output.push_str(&format_rr(rr));
+        }
+    }
+
+    if !msg.authorities.is_empty() {
+        output.push_str("\n;; AUTHORITY SECTION\n");
+        for rr in &msg.authorities {
+            output.push_str(&format_rr(rr));
+        }
+    }
+
+    if !msg.additionals.is_empty() {
+        output.push_str("\n;; ADDITIONAL SECTION\n");
+        for rr in &msg.additionals {
+            output.push_str(&format_rr(rr));
+        }
+    }
+
+    output
+}
+
+fn format_rr(rr: &ResourceRecord) -> String {
+    format!(
+        "{}\t{}\t{:?}\t{:?}\t{}\n",
+        rr.name.to_string(),
+        rr.ttl,
+        rr.rclass,
+        rr.rtype,
+        format_rdata(&rr.rdata)
+    )
+}

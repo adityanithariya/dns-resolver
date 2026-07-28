@@ -6,7 +6,7 @@ use crate::message::DResult;
 // ---------- Name handling ----------
 
 /// A domain name as an ordered list of labels, e.g. "example.com" -> ["example", "com"]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Name(pub Vec<String>);
 
 impl Name {
@@ -121,7 +121,7 @@ impl Name {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SOARecord {
     pub mname: Name,
     pub rname: Name,
@@ -163,7 +163,7 @@ impl SOARecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TxtRecord(pub Vec<String>);
 
 impl TxtRecord {
@@ -205,13 +205,13 @@ impl TxtRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EdnsOption {
     pub code: u16,
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OptRecord {
     pub udp_payload_size: u16,
     pub extended_rcode: u8,
