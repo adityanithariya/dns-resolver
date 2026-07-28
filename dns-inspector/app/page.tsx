@@ -21,19 +21,21 @@ export default function Home() {
   const [queriedName, setQueriedName] = useState<string | null>(null);
 
   async function runQuery() {
+    let q = name.trim();
     if (name.startsWith("http://") || name.startsWith("https://")) {
       const url = new URL(name);
       setName(url.hostname);
+      q = url.hostname;
     }
 
     setError(null);
     setMessage(null);
-    setQueriedName(name);
+    setQueriedName(q);
 
     try {
       setStatus("encoding");
       const id = Math.floor(Math.random() * 0xffff);
-      const queryBytes = await encodeQuery(id, name, qtype);
+      const queryBytes = await encodeQuery(id, q, qtype);
 
       setStatus("sending");
       const responseBytes = await postDnsQuery(queryBytes);
