@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { GoogleAnalytics } from '@next/third-parties/google'
 import "./globals.css";
 
-const APP_NAME = "DNS Packet Inspector";
-const APP_DEFAULT_TITLE = "DNS Packet Inspector";
-const APP_TITLE_TEMPLATE = "%s | DNS Packet Inspector";
+const APP_NAME = "Recursive DNS Resolver";
+const APP_DEFAULT_TITLE = "Recursive DNS Resolver";
+const APP_TITLE_TEMPLATE = "%s | Recursive DNS Resolver";
 const APP_DESCRIPTION =
   "Send iterative/recursive DNS queries through the Rust/WASM resolver core and inspect the raw Message.";
 
